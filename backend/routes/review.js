@@ -142,11 +142,16 @@ router.post('/review', async (req, res) => {
 router.get('/history', async (req, res) => {
   try {
     const { userId } = req.query;
-    const reviews = await getRecentReviews(userId || null);
+    let reviews = [];
+    try {
+      reviews = await getRecentReviews(userId || null) || [];
+    } catch (firebaseErr) {
+      console.warn('[Firebase] getRecentReviews failed (returning empty):', firebaseErr.message);
+    }
     return res.status(200).json({ reviews });
   } catch (err) {
     console.error('Error handling GET /api/history:', err);
-    return res.status(500).json({ error: err.message || 'Failed to fetch review history' });
+    return res.status(200).json({ reviews: [] });
   }
 });
 

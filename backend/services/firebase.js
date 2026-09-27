@@ -11,7 +11,6 @@ const admin = require('firebase-admin');
 
 let db = null;
 
-let serviceAccount;
 try {
   if (!admin.apps.length) {
     let credential = null;
@@ -65,20 +64,24 @@ try {
       }
     }
 
-    // 4. Initialize Admin App
+    // 4. Only initialize Firebase if we have real credentials.
+    // Without credentials, skip entirely — unauthenticated Firestore calls
+    // throw unhandled network errors that can crash the process.
     if (credential) {
       admin.initializeApp({ credential });
+      db = admin.firestore();
+      console.log('[Firebase] Firestore ready.');
     } else {
-      admin.initializeApp({
-        projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || 'codesage-4026e'
-      });
-      console.log('[Firebase] Admin SDK initialized using default project configuration.');
+      console.warn('[Firebase] No credentials found. Firebase/Firestore disabled. Reviews will not be persisted.');
+      db = null;
     }
+  } else {
+    // App already initialized (e.g. hot reload)
+    db = admin.firestore();
   }
-
-  db = admin.firestore();
 } catch (err) {
-  console.log('[Firebase] Init failed:', err.message);
+  console.warn('[Firebase] Init failed:', err.message, '— Continuing without Firebase.');
+  db = null;
 }
 
 /**

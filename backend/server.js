@@ -11,6 +11,14 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 
+// Prevent unhandled errors from crashing the process
+process.on('uncaughtException', (err) => {
+  console.error('[PROCESS] Uncaught Exception:', err.message);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[PROCESS] Unhandled Rejection:', reason);
+});
+
 const reviewRouter = require('./routes/review');
 
 const app = express();
