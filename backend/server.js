@@ -17,8 +17,22 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 /**
- * Configure Cross-Origin Resource Sharing (CORS)
- * Allows requests originating from specified frontend development and production origins.
+ * Force CORS headers on EVERY response — including 500 errors.
+ * This raw middleware runs before everything else so even crash
+ * responses carry the Access-Control-Allow-Origin header.
+ */
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+/**
+ * cors() package as secondary layer.
  */
 app.use(cors({
   origin: '*',
@@ -51,11 +65,6 @@ setInterval(() => {
 
 /**
  * Express middleware to enforce IP-based rate limiting.
- *
- * @param {import('express').Request} req - The Express request object.
- * @param {import('express').Response} res - The Express response object.
- * @param {import('express').NextFunction} next - The next middleware callback.
- * @returns {void}
  */
 function rateLimiter(req, res, next) {
   try {
@@ -83,21 +92,22 @@ function rateLimiter(req, res, next) {
 app.use(rateLimiter);
 
 /**
- * Serve static files from ../frontend/dist if directory exists (for production builds)
- */
-const staticDistPath = path.join(__dirname, '..', 'frontend', 'dist');
-app.use(express.static(staticDistPath));
-
-/**
  * Mount review router at /api
  * Provides /api/review and /api/history
  */
 app.use('/api', reviewRouter);
 
 /**
+ * Global error handler — always sends CORS headers even on unhandled errors.
+ */
+app.use((err, req, res, next) => {
+  console.error('Unhandled server error:', err.message);
+  res.header('Access-Control-Allow-Origin', '*');
+  res.status(500).json({ error: err.message || 'Internal server error' });
+});
+
+/**
  * Start Express HTTP server listener.
- *
- * @returns {void}
  */
 function startServer() {
   try {
