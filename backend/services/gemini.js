@@ -162,8 +162,8 @@ PRIORITY 1 — FATAL EXECUTION ERRORS (check these first):
 - Type errors that will throw at runtime
 - Import/require of non-existent modules
 
-PRIORITY 2 — SECURITY ISSUES:
-- SQL injection, XSS, eval usage, hardcoded secrets
+PRIORITY 2 — SECURITY ISSUES (ALWAYS mark severity as "high"):
+- SQL injection, XSS, eval usage, hardcoded secrets/credentials
 - Authentication bypasses, insecure data handling
 
 PRIORITY 3 — LOGIC BUGS:

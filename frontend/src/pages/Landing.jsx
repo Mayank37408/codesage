@@ -36,6 +36,39 @@ import {
   SiGnubash
 } from 'react-icons/si';
 
+function SectionReveal({ children, className = '' }) {
+  const ref = useRef(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (ref.current) {
+      observer.observe(ref.current);
+    }
+
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      className={`transition-all duration-700 ease-out transform ${
+        visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'
+      } ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
 export default function Landing() {
   const navigate = useNavigate();
   const { theme } = useTheme();
@@ -607,7 +640,7 @@ export default function Landing() {
       {/* ========================================================= */}
       <section className={`w-full py-20 px-4 sm:px-6 relative z-10 border-t transition-colors ${isDark ? 'border-white/5 bg-white/[0.01]' : 'border-black/10 bg-black/[0.01]'
         }`}>
-        <div className="max-w-6xl mx-auto space-y-16">
+        <SectionReveal className="max-w-6xl mx-auto space-y-16">
           {/* Section Heading */}
           <div className="text-center space-y-3 max-w-2xl mx-auto">
             <h2 className={`text-3xl sm:text-5xl font-bold tracking-tight ${isDark ? 'text-white' : 'text-black'}`}>
@@ -672,13 +705,13 @@ export default function Landing() {
               </p>
             </div>
           </div>
-        </div>
+        </SectionReveal>
       </section>
 
       {/* ========================================================= */}
       {/* SECTION 5 — LIVE CODE PREVIEW (Realistic Demo)             */}
       {/* ========================================================= */}
-      <section className="w-full py-24 sm:py-32 px-4 sm:px-6 relative z-10 max-w-7xl mx-auto space-y-12">
+      <SectionReveal className="w-full py-24 sm:py-32 px-4 sm:px-6 relative z-10 max-w-7xl mx-auto space-y-12">
         {/* Section Heading */}
         <div className="text-center space-y-3 max-w-2xl mx-auto">
           <h2 className={`text-4xl sm:text-5xl font-bold tracking-tight ${isDark ? 'text-white' : 'text-black'}`}>
@@ -992,7 +1025,7 @@ export default function Landing() {
             {/* Launch App Button */}
           </div>
         </div>
-      </section>
+      </SectionReveal>
 
       {/* ========================================================= */}
       {/* SECTION 6 — SUPPORTED LANGUAGES SHOWCASE (LogoLoop)       */}
@@ -1030,7 +1063,7 @@ export default function Landing() {
       {/* ========================================================= */}
       {/* SECTION 7 — DUAL-ENGINE ARCHITECTURE MATRIX               */}
       {/* ========================================================= */}
-      <section className="w-full py-20 px-4 sm:px-6 relative z-10 max-w-5xl mx-auto space-y-12">
+      <SectionReveal className="w-full py-20 px-4 sm:px-6 relative z-10 max-w-5xl mx-auto space-y-12">
         <div className="text-center space-y-3 max-w-xl mx-auto">
           <h2 className={`text-2xl sm:text-4xl font-bold tracking-tight ${isDark ? 'text-white' : 'text-black'}`}>
             Why CodeSage Outperforms
@@ -1106,12 +1139,12 @@ export default function Landing() {
             </tbody>
           </table>
         </div>
-      </section>
+      </SectionReveal>
 
       {/* ========================================================= */}
       {/* SECTION 8 — FINAL HIGH-IMPACT CALL TO ACTION               */}
       {/* ========================================================= */}
-      <section className="w-full py-24 sm:py-32 px-4 sm:px-6 relative z-10 max-w-5xl mx-auto">
+      <SectionReveal className="w-full py-24 sm:py-32 px-4 sm:px-6 relative z-10 max-w-5xl mx-auto">
         <div className={`relative rounded-3xl border p-8 sm:p-14 text-center backdrop-blur-xl shadow-2xl overflow-hidden space-y-6 transition-colors ${isDark
           ? 'border-white/15 bg-gradient-to-b from-white/[0.08] to-white/[0.02]'
           : 'border-black/10 bg-white'
@@ -1161,7 +1194,7 @@ export default function Landing() {
             <span>✓ 30+ programming languages &amp; frameworks</span>
           </div>
         </div>
-      </section>
+      </SectionReveal>
 
       {/* ========================================================= */}
       {/* FOOTER                                                     */}

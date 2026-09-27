@@ -389,9 +389,14 @@ async function reviewCode(code, language = 'javascript', isPrivate = false) {
     if (geminiData?.executionWillFail) {
       score = Math.min(score, 40);
     }
-    score -= (stats.high * 15);
+    score -= (stats.high * 20);
     score -= (stats.medium * 8);
     score -= (stats.low * 3);
+
+    // Enforce rule: a score above 70 should only be given when there are no high-severity issues
+    if (stats.high > 0) {
+      score = Math.min(score, 70);
+    }
     score = Math.max(0, score);
 
     // Format language display name
@@ -569,15 +574,16 @@ async function reviewRepo(repoUrl, isPrivate = false) {
   const repoData = await fetchRepoForReview(repoUrl);
   const { owner, repo, branch, files } = repoData;
 
-  let cveIssues = [];
-  try {
-    cveIssues = await scanFilesForVulnerabilities(files);
-  } catch (err) {
-    console.warn('[VulnScanner Warning]:', err.message);
-  }
+  const [cveIssuesResult, geminiResult] = await Promise.all([
+    scanFilesForVulnerabilities(files).catch((err) => {
+      console.warn('[VulnScanner Warning]:', err.message);
+      return [];
+    }),
+    analyzeRepoWithGemini(files, owner, repo)
+  ]);
 
+  const cveIssues = Array.isArray(cveIssuesResult) ? cveIssuesResult : [];
   const duplicationIssues = detectCodeDuplication(files);
-  const geminiResult = await analyzeRepoWithGemini(files, owner, repo);
 
   const combinedIssues = [
     ...(geminiResult?.issues || []),
@@ -585,13 +591,29 @@ async function reviewRepo(repoUrl, isPrivate = false) {
     ...duplicationIssues
   ];
 
+  const highCount = combinedIssues.filter(i => (i.severity || '').toLowerCase() === 'high').length;
+  const mediumCount = combinedIssues.filter(i => (i.severity || '').toLowerCase() === 'medium').length;
+  const lowCount = combinedIssues.filter(i => (i.severity || '').toLowerCase() === 'low').length;
+
+  let overallScore = geminiResult?.overallScore;
+  if (typeof overallScore !== 'number' || isNaN(overallScore)) {
+    // Calculate fallback score strictly based on actual merged issues instead of a fixed 80
+    overallScore = 100 - (highCount * 20) - (mediumCount * 8) - (lowCount * 3);
+  }
+
+  // Enforce rule: a score above 70 should only be given when there are no high-severity issues
+  if (highCount > 0) {
+    overallScore = Math.min(overallScore, 70);
+  }
+  overallScore = Math.max(0, overallScore);
+
   return {
     repoUrl,
     owner,
     repo,
     branch,
     language: detectRepoLanguages(files),
-    overallScore: geminiResult?.overallScore ?? 80,
+    overallScore,
     summary: geminiResult?.summary || 'Whole-repository review completed.',
     fileExplanations: geminiResult?.fileExplanations || [],
     issues: combinedIssues,
@@ -646,6 +668,12 @@ INSTRUCTIONS:
 4. Security patterns (mark source as "ai-reasoned")
 5. "Vibecoder" red flags: AI-generated code lacking error handling, hardcoded config values, abandoned dependencies, or inconsistent styles.
 6. Plain-English summary ("what this file does") per major file.
+7. SCORING INSTRUCTIONS FOR overallScore (0-100):
+   - overallScore MUST be calculated strictly based on the severity and quantity of issues identified in this review.
+   - Start at 100. Deduct at least 20 points per high-severity issue, 8 points per medium-severity issue, and 3 points per low-severity issue.
+   - Heavily penalize security findings (e.g., eval(), SQL injection, XSS, hardcoded credentials/secrets).
+   - A score above 70 must ONLY be returned if there are ZERO high-severity issues and at most 1-2 medium-severity issues.
+   - Do NOT return a generic or default-feeling score (such as 80 or 85) disconnected from the actual issues list.
 
 Respond ONLY in strict, valid JSON matching this schema:
 {
