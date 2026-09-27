@@ -11,50 +11,33 @@ const admin = require('firebase-admin');
 
 let db = null;
 
+let serviceAccount;
 try {
-  const serviceAccountConfig = process.env.FIREBASE_SERVICE_ACCOUNT || './codesage-4026e-firebase-adminsdk-fbsvc-f75ca1cd1b.json';
-  const candidatePaths = [
-    path.resolve(process.cwd(), serviceAccountConfig),
-    path.resolve(__dirname, '..', '..', serviceAccountConfig),
-    path.resolve(__dirname, '..', serviceAccountConfig),
-    path.resolve(__dirname, '..', '..', 'codesage-4026e-firebase-adminsdk-fbsvc-f75ca1cd1b.json'),
-    path.resolve(__dirname, '..', '..', 'firebase-service-account.json')
-  ];
-
-  let serviceAccountPath = null;
-  for (const candidate of candidatePaths) {
-    if (fs.existsSync(candidate)) {
-      serviceAccountPath = candidate;
-      break;
-    }
-  }
-
-  if (serviceAccountPath) {
-    const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
-    if (!admin.apps.length) {
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-      });
-    }
-    db = admin.firestore();
-    console.log(`Firebase Admin SDK initialized successfully using "${serviceAccountPath}".`);
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    serviceAccount = JSON.parse(
+      process.env.FIREBASE_SERVICE_ACCOUNT_JSON
+    );
+    console.log('[Firebase] Using env variable credentials');
   } else {
-    try {
-      if (!admin.apps.length) {
-        admin.initializeApp({
-          projectId: process.env.VITE_FIREBASE_PROJECT_ID || 'codesage-4026e'
-        });
-      }
-      db = admin.firestore();
-      console.log(`Firebase Admin SDK initialized with projectId "${process.env.VITE_FIREBASE_PROJECT_ID || 'codesage-4026e'}".`);
-    } catch (e) {
-      console.warn(`[Firebase Warning] Service account credentials not found in candidates. Skipping Firebase initialization.`);
-      db = null;
-    }
+    const fs = require('fs');
+    const path = require('path');
+    const filePath = process.env.FIREBASE_SERVICE_ACCOUNT || 
+      './firebase-service-account.json';
+    serviceAccount = JSON.parse(
+      fs.readFileSync(path.resolve(filePath), 'utf8')
+    );
+    console.log('[Firebase] Using file credentials');
   }
+  
+  if (!admin.apps.length) {
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+    console.log('[Firebase] Admin initialized successfully');
+  }
+  db = admin.firestore();
 } catch (err) {
-  console.warn(`[Firebase Warning] Initialization error: ${err.message}. Continuing without Firebase.`);
-  db = null;
+  console.log('[Firebase] Init failed:', err.message);
 }
 
 /**
