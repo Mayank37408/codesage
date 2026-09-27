@@ -1,0 +1,19 @@
+.all-letters {
+  display: inline-block;
+  white-space: pre-wrap;
+}
+
+.encrypted {
+  color: #ef4444;
+  opacity: 0.9;
+  filter: blur(0.2px);
+  text-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+  transition: opacity 0.5s ease, color 0.5s ease, filter 0.5s ease, text-shadow 0.5s ease;
+}
+
+.revealed {
+  opacity: 1;
+  filter: blur(0);
+  text-shadow: none;
+  transition: opacity 0.5s ease, color 0.5s ease, filter 0.5s ease, text-shadow 0.5s ease;
+}
