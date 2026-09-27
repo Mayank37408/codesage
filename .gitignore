@@ -37,3 +37,6 @@ Thumbs.db
 
 # Local env files
 *.local
+
+.vercel
+.env*

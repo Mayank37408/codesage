@@ -13,28 +13,69 @@ let db = null;
 
 let serviceAccount;
 try {
-  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-    serviceAccount = JSON.parse(
-      process.env.FIREBASE_SERVICE_ACCOUNT_JSON
-    );
-    console.log('[Firebase] Using env variable credentials');
-  } else {
-    const fs = require('fs');
-    const path = require('path');
-    const filePath = process.env.FIREBASE_SERVICE_ACCOUNT || 
-      './firebase-service-account.json';
-    serviceAccount = JSON.parse(
-      fs.readFileSync(path.resolve(filePath), 'utf8')
-    );
-    console.log('[Firebase] Using file credentials');
-  }
-  
   if (!admin.apps.length) {
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount)
-    });
-    console.log('[Firebase] Admin initialized successfully');
+    let credential = null;
+
+    // 1. Try loading from environment variable as JSON string (supports FIREBASE_SERVICE_ACCOUNT or FIREBASE_SERVICE_ACCOUNT_JSON)
+    const envJsonStr = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT;
+    if (envJsonStr && envJsonStr.trim().startsWith('{')) {
+      try {
+        const serviceAccount = JSON.parse(envJsonStr);
+        credential = admin.credential.cert(serviceAccount);
+        console.log('[Firebase] Admin SDK initialized using environment variable JSON.');
+      } catch (e) {
+        console.warn('[Firebase] Failed to parse JSON from env variable:', e.message);
+      }
+    }
+
+    // 2. Try loading from file path specified in FIREBASE_SERVICE_ACCOUNT
+    if (!credential && process.env.FIREBASE_SERVICE_ACCOUNT) {
+      const filePath = path.resolve(process.cwd(), process.env.FIREBASE_SERVICE_ACCOUNT);
+      if (fs.existsSync(filePath)) {
+        try {
+          const serviceAccount = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+          credential = admin.credential.cert(serviceAccount);
+          console.log(`[Firebase] Admin SDK initialized using file path: ${filePath}`);
+        } catch (e) {
+          console.warn('[Firebase] Failed to read service account file:', e.message);
+        }
+      }
+    }
+
+    // 3. Fallback: Search local candidate files (local dev)
+    if (!credential) {
+      const candidatePaths = [
+        path.resolve(process.cwd(), 'codesage-4026e-firebase-adminsdk-fbsvc-df0949928f.json'),
+        path.resolve(process.cwd(), 'codesage-4026e-firebase-adminsdk-fbsvc-f75ca1cd1b.json'),
+        path.resolve(__dirname, '..', '..', 'codesage-4026e-firebase-adminsdk-fbsvc-df0949928f.json'),
+        path.resolve(__dirname, '..', '..', 'codesage-4026e-firebase-adminsdk-fbsvc-f75ca1cd1b.json'),
+        path.resolve(process.cwd(), 'firebase-service-account.json'),
+        path.resolve(__dirname, '..', 'firebase-service-account.json')
+      ];
+
+      for (const candidate of candidatePaths) {
+        if (fs.existsSync(candidate)) {
+          try {
+            const serviceAccount = JSON.parse(fs.readFileSync(candidate, 'utf8'));
+            credential = admin.credential.cert(serviceAccount);
+            console.log(`[Firebase] Admin SDK initialized using candidate file: ${candidate}`);
+            break;
+          } catch (e) {}
+        }
+      }
+    }
+
+    // 4. Initialize Admin App
+    if (credential) {
+      admin.initializeApp({ credential });
+    } else {
+      admin.initializeApp({
+        projectId: process.env.FIREBASE_PROJECT_ID || process.env.VITE_FIREBASE_PROJECT_ID || 'codesage-4026e'
+      });
+      console.log('[Firebase] Admin SDK initialized using default project configuration.');
+    }
   }
+
   db = admin.firestore();
 } catch (err) {
   console.log('[Firebase] Init failed:', err.message);
@@ -42,14 +83,6 @@ try {
 
 /**
  * Persists a code review record to Firestore.
- * Saves simultaneously to the flat "reviews" collection and the user's subcollection "users/{userId}/reviews".
- *
- * @param {object} reviewData - Full review result payload
- * @param {string} language - Programming language
- * @param {boolean} isPrivate - Whether private mode is enabled
- * @param {string} userId - User UID
- * @param {string} userEmail - User Email address
- * @returns {Promise<string|null>} Created review document ID or null
  */
 async function saveReview(reviewData, language, isPrivate, userId, userEmail) {
   try {
@@ -71,7 +104,7 @@ async function saveReview(reviewData, language, isPrivate, userId, userEmail) {
     const effectiveSummary = reviewData.summary || '';
     const effectiveStats = reviewData.stats || { total: 0, high: 0, medium: 0, low: 0 };
 
-    // Place 1 — Existing flat "reviews" collection (keep as is):
+    // Place 1 — Existing flat "reviews" collection:
     const flatDocData = {
       userId: uidStr,
       userEmail: emailStr,
@@ -94,7 +127,6 @@ async function saveReview(reviewData, language, isPrivate, userId, userEmail) {
       const displayName = emailStr.includes('@') ? emailStr.split('@')[0] : (emailStr || 'Developer');
 
       userSubSavePromise = (async () => {
-        // Upsert the user document at users/{userId}
         await userRef.set({
           displayName,
           email: emailStr,
@@ -102,7 +134,6 @@ async function saveReview(reviewData, language, isPrivate, userId, userEmail) {
           totalReviews: admin.firestore.FieldValue.increment(1)
         }, { merge: true });
 
-        // Create document in users/{userId}/reviews/
         const subDocData = {
           language: effectiveLanguage,
           score: effectiveScore,
@@ -128,11 +159,6 @@ async function saveReview(reviewData, language, isPrivate, userId, userEmail) {
 
 /**
  * Retrieves the 10 most recent reviews.
- * If userId is provided, queries users/{userId}/reviews ordered by reviewedAt desc.
- * If no userId is provided, falls back to the existing flat "reviews" collection query.
- *
- * @param {string} [userId] - Optional User UID
- * @returns {Promise<Array<object>>}
  */
 async function getRecentReviews(userId) {
   try {
@@ -140,7 +166,6 @@ async function getRecentReviews(userId) {
       return [];
     }
 
-    // Branch 1: If userId is provided, query users/{userId}/reviews
     if (userId && userId !== 'anonymous') {
       try {
         const snapshot = await db.collection('users')
@@ -164,18 +189,16 @@ async function getRecentReviews(userId) {
             summary: data.summary || '',
             stats: data.stats || { total: 0, high: 0, medium: 0, low: 0 },
             reviewedAt: reviewedAtDate,
-            timestamp: reviewedAtDate // alias for backwards compatibility
+            timestamp: reviewedAtDate
           });
         });
 
         return reviews;
       } catch (userErr) {
         console.warn('Failed to query user subcollection reviews:', userErr.message);
-        // Fall back to flat collection if subcollection fails
       }
     }
 
-    // Branch 2: Fall back to existing flat "reviews" collection query
     let snapshot;
     try {
       snapshot = await db.collection('reviews')
@@ -221,10 +244,7 @@ async function getRecentReviews(userId) {
 }
 
 /**
- * Retrieves all review records for a specific authenticated user (for profile analytics).
- *
- * @param {string} userId - The user UID to query.
- * @returns {Promise<Array<object>>}
+ * Retrieves all review records for a specific authenticated user.
  */
 async function getUserReviews(userId) {
   try {
@@ -232,7 +252,6 @@ async function getUserReviews(userId) {
       return [];
     }
 
-    // First try user subcollection
     try {
       const subSnap = await db.collection('users').doc(userId).collection('reviews').orderBy('reviewedAt', 'desc').get();
       if (!subSnap.empty) {
@@ -251,9 +270,8 @@ async function getUserReviews(userId) {
         });
         return reviews;
       }
-    } catch (e) {}
+    } catch (e) { }
 
-    // Fall back to querying flat reviews with userId == userId
     const snapshot = await db.collection('reviews').where('userId', '==', userId).get();
     const reviews = [];
     snapshot.forEach((doc) => {
